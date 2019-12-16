@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 
 	"github.com/cosmos/cosmos-sdk/client/flags"
@@ -53,9 +52,6 @@ func keyCommands() *cobra.Command {
 }
 
 func getKeybase(cmd *cobra.Command, dryrun bool, buf io.Reader) (keys.Keybase, error) {
-	fmt.Println("buf", buf)
-	// fmt.Println("ethermintKeygenFunc", ethermintKeygenFunc)
-	fmt.Println("keys.WithKeygegFunc", keys.WithKeygenFunc(ethermintKeygenFunc))
 	if dryrun {
 		return keys.NewInMemory(keys.WithKeygenFunc(ethermintKeygenFunc)), nil
 	}
@@ -63,14 +59,12 @@ func getKeybase(cmd *cobra.Command, dryrun bool, buf io.Reader) (keys.Keybase, e
 }
 
 func runAddCmd(cmd *cobra.Command, args []string) error {
+
 	inBuf := bufio.NewReader(cmd.InOrStdin())
-	fmt.Println("cmd.InOrStdin()", cmd.InOrStdin())
-	fmt.Println("inBuf", inBuf)
 	kb, err := getKeybase(cmd, viper.GetBool(flagDryRun), inBuf)
 	if err != nil {
 		return err
 	}
-
 	return clientkeys.RunAddCmd(cmd, args, kb, inBuf)
 }
 
