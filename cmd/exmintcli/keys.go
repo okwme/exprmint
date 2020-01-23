@@ -51,20 +51,21 @@ func keyCommands() *cobra.Command {
 	return cmd
 }
 
-func getKeybase(cmd *cobra.Command, dryrun bool, buf io.Reader) (keys.Keybase, error) {
+func getKeybase(dryrun bool, buf io.Reader) (keys.Keybase, error) {
 	if dryrun {
 		return keys.NewInMemory(keys.WithKeygenFunc(ethermintKeygenFunc)), nil
 	}
+
 	return clientkeys.NewKeyringFromHomeFlag(buf, keys.WithKeygenFunc(ethermintKeygenFunc))
 }
 
 func runAddCmd(cmd *cobra.Command, args []string) error {
-
 	inBuf := bufio.NewReader(cmd.InOrStdin())
-	kb, err := getKeybase(cmd, viper.GetBool(flagDryRun), inBuf)
+	kb, err := getKeybase(viper.GetBool(flagDryRun), inBuf)
 	if err != nil {
 		return err
 	}
+
 	return clientkeys.RunAddCmd(cmd, args, kb, inBuf)
 }
 

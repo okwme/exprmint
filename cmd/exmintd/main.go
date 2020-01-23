@@ -4,28 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-
 	"math/big"
-
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-
-	cryptokeys "github.com/cosmos/cosmos-sdk/crypto/keys"
-	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/libs/cli"
-	"github.com/tendermint/tendermint/libs/log"
-	tmtypes "github.com/tendermint/tendermint/types"
-
-	dbm "github.com/tendermint/tm-db"
-
-	emintcrypto "github.com/cosmos/ethermint/crypto"
-	"github.com/okwme/exprmint/app"
-	tmamino "github.com/tendermint/tendermint/crypto/encoding/amino"
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
-	"github.com/cosmos/cosmos-sdk/client/debug"
 	clientkeys "github.com/cosmos/cosmos-sdk/client/keys"
+	cryptokeys "github.com/cosmos/cosmos-sdk/crypto/keys"
 	"github.com/cosmos/cosmos-sdk/server"
 	"github.com/cosmos/cosmos-sdk/store"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -33,16 +17,28 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/genutil"
 	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
-
 	"github.com/cosmos/cosmos-sdk/x/staking"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+
+	"github.com/cosmos/ethermint/app"
+	emintapp "github.com/okwme/exprmint/app"
+	"github.com/cosmos/ethermint/client/genaccounts"
+	emintcrypto "github.com/cosmos/ethermint/crypto"
+
+	abci "github.com/tendermint/tendermint/abci/types"
+	tmamino "github.com/tendermint/tendermint/crypto/encoding/amino"
+	"github.com/tendermint/tendermint/libs/cli"
+	tmlog "github.com/tendermint/tendermint/libs/log"
+	tmtypes "github.com/tendermint/tendermint/types"
+	dbm "github.com/tendermint/tm-db"
 )
 
-const flagInvCheckPeriod = "inv-check-period"
-
-var invCheckPeriod uint
-
 func main() {
-	cdc := app.MakeCodec()
+	cobra.EnableCommandSorting = false
+
+	cdc := emintapp.MakeCodec()
 
 	tmamino.RegisterKeyType(emintcrypto.PubKeySecp256k1{}, emintcrypto.PubKeyAminoName)
 	tmamino.RegisterKeyType(emintcrypto.PrivKeySecp256k1{}, emintcrypto.PrivKeyAminoName)
@@ -56,77 +52,60 @@ func main() {
 	config.SetBech32PrefixForAccount(sdk.Bech32PrefixAccAddr, sdk.Bech32PrefixAccPub)
 	config.SetBech32PrefixForValidator(sdk.Bech32PrefixValAddr, sdk.Bech32PrefixValPub)
 	config.SetBech32PrefixForConsensusNode(sdk.Bech32PrefixConsAddr, sdk.Bech32PrefixConsPub)
-	config.SetKeyringServiceName("exprmint")
 	config.Seal()
 
 	ctx := server.NewDefaultContext()
-	cobra.EnableCommandSorting = false
+
 	rootCmd := &cobra.Command{
 		Use:               "exmintd",
-		Short:             "app Daemon (server)",
+		Short:             "Ethermint App Daemon (server)",
 		PersistentPreRunE: server.PersistentPreRunEFn(ctx),
 	}
 	// CLI commands to initialize the chain
-
-	rootCmd.AddCommand(withChainIDValidation(genutilcli.InitCmd(ctx, cdc, app.ModuleBasics, app.DefaultNodeHome)))
-	rootCmd.AddCommand(genutilcli.CollectGenTxsCmd(ctx, cdc, auth.GenesisAccountIterator{}, app.DefaultNodeHome))
-	rootCmd.AddCommand(genutilcli.MigrateGenesisCmd(ctx, cdc))
 	rootCmd.AddCommand(
+		withChainIDValidation(genutilcli.InitCmd(ctx, cdc, emintapp.ModuleBasics, emintapp.DefaultNodeHome)),
+		genutilcli.CollectGenTxsCmd(ctx, cdc, auth.GenesisAccountIterator{}, emintapp.DefaultNodeHome),
 		genutilcli.GenTxCmd(
-			ctx, cdc, app.ModuleBasics, staking.AppModuleBasic{},
-			auth.GenesisAccountIterator{}, app.DefaultNodeHome, app.DefaultCLIHome,
+			ctx, cdc, emintapp.ModuleBasics, staking.AppModuleBasic{}, auth.GenesisAccountIterator{}, emintapp.DefaultNodeHome, emintapp.DefaultCLIHome,
 		),
-	)
-	rootCmd.AddCommand(genutilcli.ValidateGenesisCmd(ctx, cdc, app.ModuleBasics))
-	rootCmd.AddCommand(AddGenesisAccountCmd(ctx, cdc, app.DefaultNodeHome, app.DefaultCLIHome))
-	rootCmd.AddCommand(client.NewCompletionCmd(rootCmd, true))
-	rootCmd.AddCommand(debug.Cmd(cdc))
+		genutilcli.ValidateGenesisCmd(ctx, cdc, emintapp.ModuleBasics),
 
+		// AddGenesisAccountCmd allows users to add accounts to the genesis file
+		genaccounts.AddGenesisAccountCmd(ctx, cdc, app.DefaultNodeHome, app.DefaultCLIHome),
+	)
+
+	// Tendermint node base commands
 	server.AddCommands(ctx, cdc, rootCmd, newApp, exportAppStateAndTMValidators)
 
 	// prepare and add flags
-	executor := cli.PrepareBaseCmd(rootCmd, "EX", app.DefaultNodeHome)
-	rootCmd.PersistentFlags().UintVar(&invCheckPeriod, flagInvCheckPeriod,
-		0, "Assert registered invariants every N blocks")
+	executor := cli.PrepareBaseCmd(rootCmd, "EM", emintapp.DefaultNodeHome)
 	err := executor.Execute()
 	if err != nil {
 		panic(err)
 	}
 }
 
-func newApp(logger log.Logger, db dbm.DB, traceStore io.Writer) abci.Application {
-	var cache sdk.MultiStorePersistentCache
-
-	if viper.GetBool(server.FlagInterBlockCache) {
-		cache = store.NewCommitKVStoreCacheManager()
-	}
-
-	return app.NewExprmintApp(
-		logger, db, traceStore, true, invCheckPeriod,
-		baseapp.SetPruning(store.NewPruningOptionsFromString(viper.GetString("pruning"))),
-		baseapp.SetMinGasPrices(viper.GetString(server.FlagMinGasPrices)),
-		baseapp.SetHaltHeight(viper.GetUint64(server.FlagHaltHeight)),
-		baseapp.SetHaltTime(viper.GetUint64(server.FlagHaltTime)),
-		baseapp.SetInterBlockCache(cache),
-	)
+func newApp(logger tmlog.Logger, db dbm.DB, traceStore io.Writer) abci.Application {
+	return emintapp.NewEthermintApp(logger, db, true, 0,
+		baseapp.SetPruning(store.NewPruningOptionsFromString(viper.GetString("pruning"))))
 }
 
 func exportAppStateAndTMValidators(
-	logger log.Logger, db dbm.DB, traceStore io.Writer, height int64, forZeroHeight bool, jailWhiteList []string,
+	logger tmlog.Logger, db dbm.DB, traceStore io.Writer, height int64, forZeroHeight bool, jailWhiteList []string,
 ) (json.RawMessage, []tmtypes.GenesisValidator, error) {
 
 	if height != -1 {
-		aApp := app.NewExprmintApp(logger, db, traceStore, false, uint(1))
-		err := aApp.LoadHeight(height)
+		emintApp := emintapp.NewEthermintApp(logger, db, true, 0)
+		err := emintApp.LoadHeight(height)
 		if err != nil {
 			return nil, nil, err
 		}
-		return aApp.ExportAppStateAndValidators(forZeroHeight, jailWhiteList)
+		return emintApp.ExportAppStateAndValidators(forZeroHeight, jailWhiteList)
 	}
 
-	aApp := app.NewExprmintApp(logger, db, traceStore, true, uint(1))
+	emintApp := emintapp.NewEthermintApp(logger, db, true, 0)
 
-	return aApp.ExportAppStateAndValidators(forZeroHeight, jailWhiteList)
+	return emintApp.ExportAppStateAndValidators(forZeroHeight, jailWhiteList)
 }
 
 // Wraps cobra command with a RunE function with integer chain-id verification

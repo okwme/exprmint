@@ -1,42 +1,33 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path"
 
+	emintapp "github.com/okwme/exprmint/app"
+	emintcrypto "github.com/cosmos/ethermint/crypto"
 	"github.com/cosmos/ethermint/rpc"
+
+	"github.com/tendermint/go-amino"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	clientkeys "github.com/cosmos/cosmos-sdk/client/keys"
-	"github.com/cosmos/cosmos-sdk/client/lcd"
-
 	sdkrpc "github.com/cosmos/cosmos-sdk/client/rpc"
 	cryptokeys "github.com/cosmos/cosmos-sdk/crypto/keys"
-
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/x/auth"
+
 	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
-	authrest "github.com/cosmos/cosmos-sdk/x/auth/client/rest"
-	"github.com/cosmos/cosmos-sdk/x/bank"
 	bankcmd "github.com/cosmos/cosmos-sdk/x/bank/client/cli"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-
-	amino "github.com/tendermint/go-amino"
 	tmamino "github.com/tendermint/tendermint/crypto/encoding/amino"
 	"github.com/tendermint/tendermint/libs/cli"
-
-	emintcrypto "github.com/cosmos/ethermint/crypto"
-	emintapp "github.com/okwme/exprmint/app"
 )
 
 func main() {
-	// Configure cobra to sort commands
 	cobra.EnableCommandSorting = false
 
-	// Instantiate the codec for the command line application
 	cdc := emintapp.MakeCodec()
 
 	tmamino.RegisterKeyType(emintcrypto.PubKeySecp256k1{}, emintcrypto.PubKeyAminoName)
@@ -50,16 +41,11 @@ func main() {
 	config.SetBech32PrefixForAccount(sdk.Bech32PrefixAccAddr, sdk.Bech32PrefixAccPub)
 	config.SetBech32PrefixForValidator(sdk.Bech32PrefixValAddr, sdk.Bech32PrefixValPub)
 	config.SetBech32PrefixForConsensusNode(sdk.Bech32PrefixConsAddr, sdk.Bech32PrefixConsPub)
-	// config.SetKeyringServiceName("exprmint")
 	config.Seal()
-
-	// TODO: setup keybase, viper object, etc. to be passed into
-	// the below functions and eliminate global vars, like we do
-	// with the cdc
 
 	rootCmd := &cobra.Command{
 		Use:   "exmintcli",
-		Short: "Command line interface for interacting with exmintd",
+		Short: "Ethermint Client",
 	}
 
 	// Add --chain-id to persistent flags and mark it required
@@ -74,20 +60,16 @@ func main() {
 		client.ConfigCmd(emintapp.DefaultCLIHome),
 		queryCmd(cdc),
 		txCmd(cdc),
-		// TODO: Set up rest routes (if included, different from web3 api)
-		rpc.Web3RpcCmd(cdc),
+		rpc.EmintServeCmd(cdc),
 		client.LineBreak,
 		keyCommands(),
 		client.LineBreak,
 	)
 
-	// Add flags and prefix all env exposed with EX
-	executor := cli.PrepareMainCmd(rootCmd, "EX", emintapp.DefaultCLIHome)
-
+	executor := cli.PrepareMainCmd(rootCmd, "EM", emintapp.DefaultCLIHome)
 	err := executor.Execute()
 	if err != nil {
-		fmt.Printf("Failed executing CLI command: %s, exiting...\n", err)
-		os.Exit(1)
+		panic(err)
 	}
 }
 
@@ -125,35 +107,13 @@ func txCmd(cdc *amino.Codec) *cobra.Command {
 		client.LineBreak,
 		authcmd.GetBroadcastCommand(cdc),
 		authcmd.GetEncodeCommand(cdc),
-		authcmd.GetDecodeCommand(cdc),
-		authcmd.GetDecodeTxCmd(cdc),
 		client.LineBreak,
 	)
 
 	// add modules' tx commands
 	emintapp.ModuleBasics.AddTxCommands(txCmd, cdc)
 
-	// remove auth and bank commands as they're mounted under the root tx command
-	var cmdsToRemove []*cobra.Command
-
-	for _, cmd := range txCmd.Commands() {
-		if cmd.Use == auth.ModuleName || cmd.Use == bank.ModuleName {
-			cmdsToRemove = append(cmdsToRemove, cmd)
-		}
-	}
-
-	txCmd.RemoveCommand(cmdsToRemove...)
-
 	return txCmd
-}
-
-// registerRoutes registers the routes from the different modules for the LCD.
-// NOTE: details on the routes added for each module are in the module documentation
-// NOTE: If making updates here you also need to update the test helper in client/lcd/test_helper.go
-func registerRoutes(rs *lcd.RestServer) {
-	client.RegisterRoutes(rs.CliCtx, rs.Mux)
-	authrest.RegisterTxRoutes(rs.CliCtx, rs.Mux)
-	emintapp.ModuleBasics.RegisterRESTRoutes(rs.CliCtx, rs.Mux)
 }
 
 func initConfig(cmd *cobra.Command) error {
