@@ -16,3 +16,7 @@ require (
 )
 
 replace github.com/cosmos/ethermint v0.0.0-20190802135314-3f32f9ba8a1f => github.com/chainsafe/ethermint v0.0.0-20200108200339-c99d5cf6c5ca
+
+// replace github.com/cosmos/ethermint v0.0.0-20190802135314-3f32f9ba8a1f => /home/billy/GitHub.com/chainsafe/ethermint
+
+// replace github.com/cosmos/cosmos-sdk v0.34.4-0.20191213112149-d7b0f4b9b4fb => /home/billy/GitHub.com/cosmos/cosmos-sdk
