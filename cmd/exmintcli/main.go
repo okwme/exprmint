@@ -4,9 +4,9 @@ import (
 	"os"
 	"path"
 
-	emintapp "github.com/okwme/exprmint/app"
 	emintcrypto "github.com/cosmos/ethermint/crypto"
 	"github.com/cosmos/ethermint/rpc"
+	emintapp "github.com/okwme/exprmint/app"
 
 	"github.com/tendermint/go-amino"
 

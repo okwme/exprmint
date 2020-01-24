@@ -23,9 +23,9 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/cosmos/ethermint/app"
-	emintapp "github.com/okwme/exprmint/app"
 	"github.com/cosmos/ethermint/client/genaccounts"
 	emintcrypto "github.com/cosmos/ethermint/crypto"
+	emintapp "github.com/okwme/exprmint/app"
 
 	abci "github.com/tendermint/tendermint/abci/types"
 	tmamino "github.com/tendermint/tendermint/crypto/encoding/amino"
